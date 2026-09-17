@@ -93,8 +93,15 @@
   .speed { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--muted); }
   .speed input { width: 60px; }
 
-  main { display: grid; grid-template-columns: 1fr 400px; min-height: calc(100vh - 46px); }
+  main { display: grid; grid-template-columns: 1fr 5px 400px; min-height: calc(100vh - 46px); }
   #stage { position: relative; overflow: auto; }
+  #divider {
+    background: var(--border); cursor: col-resize;
+    transition: background 0.15s; user-select: none;
+  }
+  #divider:hover, body.dragging #divider { background: var(--accent); }
+  body.dragging { cursor: col-resize; user-select: none; }
+  body.dragging * { user-select: none !important; }
 
   aside {
     background: var(--panel);
@@ -195,6 +202,23 @@
   .tensor.scalar .tensor-viz {
     width: 12px; height: 12px; background: currentColor; border-radius: 2px;
   }
+  .tensor-3d {
+    display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--border-hi);
+    border-radius: 3px; padding: 6px;
+  }
+  .tensor-3d-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .tensor-3d-hint { color: var(--accent); font-size: 9.5px; }
+  .tensor-3d canvas {
+    display: block; cursor: grab;
+    background: radial-gradient(ellipse at center, rgba(124,133,244,0.06), transparent 60%);
+    border-radius: 2px;
+  }
+  .tensor-3d canvas:active { cursor: grabbing; }
 
   svg { display: block; }
 
@@ -671,6 +695,8 @@
     </svg>
   </div>
 
+  <div id="divider" title="Drag to resize panel"></div>
+
   <aside>
     <div class="aside-progress"><div class="aside-progress-bar" id="progress"></div></div>
     <div class="aside-body" id="info"></div>
@@ -704,11 +730,15 @@ function seedVal(i, j, k) {
   return 0.2 + (v - Math.floor(v)) * 0.75;
 }
 
+let _t3dCounter = 0;
+const _pendingT3D = [];   // { id, shape, color }
+const _activeT3D  = [];   // Tensor3D instances
+
 function renderTensor(name, shape, color) {
   const dims = shape.length;
   const shapeStr = '[' + shape.map(x => typeof x === 'string' ? x : x).join(', ') + ']';
 
-  let vizSvg = '';
+  let vizHtml = '';
   const CELL = 5;
   const MAX = 24;
 
@@ -718,7 +748,7 @@ function renderTensor(name, shape, color) {
     for (let i = 0; i < n; i++) {
       cells.push(`<rect x="${i*(CELL+1)}" y="0" width="${CELL}" height="${CELL*3}" fill="${color}" opacity="${seedVal(i,0)}"/>`);
     }
-    vizSvg = `<svg class="tensor-viz" width="${n*(CELL+1)}" height="${CELL*3}">${cells.join('')}</svg>`;
+    vizHtml = `<svg class="tensor-viz" width="${n*(CELL+1)}" height="${CELL*3}">${cells.join('')}</svg>`;
   }
   else if (dims === 2) {
     const h = Math.min(shape[0] === '?' ? 12 : shape[0], MAX);
@@ -727,55 +757,193 @@ function renderTensor(name, shape, color) {
     for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
       cells.push(`<rect x="${j*(CELL+1)}" y="${i*(CELL+1)}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j)}"/>`);
     }
-    vizSvg = `<svg class="tensor-viz" width="${w*(CELL+1)}" height="${h*(CELL+1)}">${cells.join('')}</svg>`;
+    vizHtml = `<svg class="tensor-viz" width="${w*(CELL+1)}" height="${h*(CELL+1)}">${cells.join('')}</svg>`;
   }
-  else if (dims === 3) {
-    // isometric stack — up to 3 slabs
-    const [b, h, w] = shape.map(x => typeof x === 'string' ? 8 : x);
-    const showB = Math.min(b, 3);
-    const showH = Math.min(h, MAX);
-    const showW = Math.min(w, MAX);
-    const off = 4;
-    const W = showW*(CELL+1) + showB*off;
-    const H = showH*(CELL+1) + showB*off;
-    let parts = '';
-    for (let s = showB - 1; s >= 0; s--) {
-      const dx = s * off, dy = s * off;
-      const cells = [];
-      for (let i = 0; i < showH; i++) for (let j = 0; j < showW; j++) {
-        cells.push(`<rect x="${j*(CELL+1)+dx}" y="${i*(CELL+1)+dy}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j,s)}"/>`);
-      }
-      parts += `<g>${cells.join('')}</g>`;
-    }
-    vizSvg = `<svg class="tensor-viz" width="${W}" height="${H}">${parts}</svg>`;
-  }
-  else if (dims === 4) {
-    // show one [h,w] slice, note depth in shape label
-    const [b, h, w, d] = shape.map(x => typeof x === 'string' ? 8 : x);
-    const showH = Math.min(h, MAX);
-    const showW = Math.min(w, MAX);
-    const cells = [];
-    for (let i = 0; i < showH; i++) for (let j = 0; j < showW; j++) {
-      cells.push(`<rect x="${j*(CELL+1)}" y="${i*(CELL+1)}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j)}"/>`);
-    }
-    // little bar showing depth
-    const bars = [];
-    for (let k = 0; k < 8; k++) {
-      bars.push(`<rect x="${showW*(CELL+1)+8+k*3}" y="${(showH*(CELL+1))/2 - 10}" width="2" height="20" fill="${color}" opacity="${seedVal(k,k)*0.9}"/>`);
-    }
-    const W = showW*(CELL+1) + 40;
-    const H = showH*(CELL+1);
-    vizSvg = `<svg class="tensor-viz" width="${W}" height="${H}">${cells.join('')}${bars.join('')}<text x="${showW*(CELL+1)+8}" y="${H-2}" font-size="9" fill="var(--muted)" font-family="IBM Plex Mono, monospace">×${d}</text></svg>`;
+  else if (dims === 3 || dims === 4) {
+    // 3D interactive canvas
+    const id = 't3d_' + (++_t3dCounter);
+    _pendingT3D.push({ id, shape, color });
+    vizHtml = `<div class="tensor-3d">
+      <div class="tensor-3d-head"><span>3D view</span><span class="tensor-3d-hint">drag · scroll · dbl-click reset</span></div>
+      <canvas id="${id}" width="300" height="200"></canvas>
+    </div>`;
   }
   else {
-    vizSvg = `<div class="tensor-viz" style="width:20px;height:12px;background:${color};opacity:0.6"></div>`;
+    vizHtml = `<div class="tensor-viz" style="width:20px;height:12px;background:${color};opacity:0.6"></div>`;
   }
 
   return `<div class="tensor">
     <span class="tensor-name">${name}</span>
-    ${vizSvg}
+    ${vizHtml}
     <span class="tensor-shape">${shapeStr}</span>
   </div>`;
+}
+
+// ============================================================
+// 3D INTERACTIVE TENSOR VIEW  (canvas 2D + hand-rolled perspective)
+// ============================================================
+class Tensor3D {
+  constructor(canvas, shape, color) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.shape = shape;
+    this.color = color;
+    this.theta = 0.6;   // azimuth (yaw)
+    this.phi = 0.35;    // elevation (pitch)
+    this.dist = 4.2;
+    this.autoRotate = true;
+    this.alive = true;
+    this.dragging = false;
+    this.points = this._buildPoints();
+    this._attach();
+    this._loop();
+  }
+  _buildPoints() {
+    const s = this.shape;
+    let dims;
+    if (s.length === 3) {
+      dims = s.map(v => typeof v === 'string' ? 6 : v);
+    } else if (s.length === 4) {
+      // [B, N, M, D]: show N × M × min(D, cap) volumetric, ignore batch
+      const [, n, m, d] = s.map(v => typeof v === 'string' ? 8 : v);
+      dims = [n, m, d];
+    } else {
+      dims = [4, 4, 4];
+    }
+    const CAP = 14;
+    const show = dims.map(d => Math.min(d, CAP));
+    // Cell spacing so cube stays inside ~[-1, 1]
+    const spacing = 1.4 / Math.max(...show);
+    const half = show.map(d => (d - 1) * spacing / 2);
+    const pts = [];
+    for (let x = 0; x < show[0]; x++)
+    for (let y = 0; y < show[1]; y++)
+    for (let z = 0; z < show[2]; z++) {
+      pts.push({
+        x: x * spacing - half[0],
+        y: y * spacing - half[1],
+        z: z * spacing - half[2],
+        v: 0.35 + seedVal(x, y, z) * 0.55
+      });
+    }
+    // Bounding box corners
+    const bx = half[0] + spacing/2, by = half[1] + spacing/2, bz = half[2] + spacing/2;
+    this.bboxCorners = [
+      [-bx,-by,-bz],[bx,-by,-bz],[bx,by,-bz],[-bx,by,-bz],
+      [-bx,-by, bz],[bx,-by, bz],[bx,by, bz],[-bx,by, bz],
+    ];
+    this.bboxEdges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    this.axesLabels = ['dim 0', 'dim 1', 'dim 2'];
+    this.dimSizes = dims;
+    return pts;
+  }
+  _project(x, y, z) {
+    const ct = Math.cos(this.theta), st = Math.sin(this.theta);
+    const cp = Math.cos(this.phi),   sp = Math.sin(this.phi);
+    const x1 = x * ct + z * st;
+    const z1 = -x * st + z * ct;
+    const y1 = y * cp - z1 * sp;
+    const z2 = y * sp + z1 * cp;
+    const zc = z2 + this.dist;
+    const f = 240 / Math.max(zc, 0.1);
+    return { sx: x1 * f, sy: -y1 * f, depth: zc };
+  }
+  draw() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2;
+    ctx.clearRect(0, 0, W, H);
+    // BBox back faces first (behind points)
+    const bproj = this.bboxCorners.map(([x,y,z]) => this._project(x,y,z));
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    this.bboxEdges.forEach(([a,b]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx + bproj[a].sx, cy + bproj[a].sy);
+      ctx.lineTo(cx + bproj[b].sx, cy + bproj[b].sy);
+      ctx.stroke();
+    });
+    // Sort points back-to-front
+    const projected = this.points.map(p => {
+      const pr = this._project(p.x, p.y, p.z);
+      return { ...pr, v: p.v };
+    }).sort((a, b) => b.depth - a.depth);
+    // Draw each as a small square
+    const [R, G, B] = _hexToRgb(this.color);
+    for (const p of projected) {
+      const size = Math.max(1.4, 22 / p.depth);
+      const dimFade = Math.max(0.25, 1 - (p.depth - 3) * 0.15);
+      const a = p.v * dimFade;
+      ctx.fillStyle = `rgba(${R},${G},${B},${a})`;
+      ctx.fillRect(cx + p.sx - size/2, cy + p.sy - size/2, size, size);
+    }
+    // Dim label
+    ctx.fillStyle = 'rgba(122, 126, 133, 0.6)';
+    ctx.font = '9px "IBM Plex Mono", monospace';
+    ctx.fillText(`${this.dimSizes.join(' × ')}`, 6, H - 6);
+  }
+  _attach() {
+    let lx = 0, ly = 0;
+    const c = this.canvas;
+    const onDown = (e) => {
+      this.dragging = true; this.autoRotate = false;
+      lx = e.clientX; ly = e.clientY;
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!this.dragging) return;
+      this.theta += (e.clientX - lx) * 0.008;
+      this.phi = Math.max(-1.4, Math.min(1.4, this.phi + (e.clientY - ly) * 0.008));
+      lx = e.clientX; ly = e.clientY;
+    };
+    const onUp = () => { this.dragging = false; };
+    const onWheel = (e) => {
+      e.preventDefault();
+      this.dist = Math.max(2.2, Math.min(9, this.dist + e.deltaY * 0.004));
+    };
+    const onDbl = () => {
+      this.theta = 0.6; this.phi = 0.35; this.dist = 4.2; this.autoRotate = true;
+    };
+    c.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    c.addEventListener('wheel', onWheel, { passive: false });
+    c.addEventListener('dblclick', onDbl);
+    this._detach = () => {
+      c.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      c.removeEventListener('wheel', onWheel);
+      c.removeEventListener('dblclick', onDbl);
+    };
+  }
+  _loop() {
+    if (!this.alive) return;
+    if (this.autoRotate) this.theta += 0.004;
+    this.draw();
+    this._raf = requestAnimationFrame(() => this._loop());
+  }
+  dispose() {
+    this.alive = false;
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (this._detach) this._detach();
+  }
+}
+function _hexToRgb(hex) {
+  const m = hex.replace('#','').match(/.{2}/g);
+  return m ? m.map(h => parseInt(h, 16)) : [200, 200, 200];
+}
+function _mountPendingT3D() {
+  // Dispose any active ones
+  _activeT3D.forEach(t => t.dispose());
+  _activeT3D.length = 0;
+  // Mount new
+  _pendingT3D.forEach(({ id, shape, color }) => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    _activeT3D.push(new Tensor3D(canvas, shape, color));
+  });
+  _pendingT3D.length = 0;
 }
 
 // ============================================================
@@ -1220,6 +1388,7 @@ function renderStep() {
   }
 
   info.innerHTML = html;
+  _mountPendingT3D();
 
   // Highlight node
   document.querySelectorAll('.node').forEach(n => n.classList.remove('active', 'active-aff'));
@@ -1308,6 +1477,35 @@ document.querySelectorAll('.node').forEach(el => {
     const idx = STEPS.findIndex(s => s.node === id);
     if (idx >= 0) { stepIdx = idx; renderStep(); }
   });
+});
+
+// ============================================================
+// RESIZABLE PANEL (drag divider)
+// ============================================================
+const divider = document.getElementById('divider');
+const mainEl = document.querySelector('main');
+const STORAGE_KEY = 'boltz2arch.panelWidth';
+const savedW = +localStorage.getItem(STORAGE_KEY);
+if (savedW && savedW >= 280 && savedW <= 800) {
+  mainEl.style.gridTemplateColumns = `1fr 5px ${savedW}px`;
+}
+let _dragResize = false;
+divider.addEventListener('mousedown', (e) => {
+  _dragResize = true;
+  document.body.classList.add('dragging');
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e) => {
+  if (!_dragResize) return;
+  const w = Math.max(280, Math.min(800, window.innerWidth - e.clientX));
+  mainEl.style.gridTemplateColumns = `1fr 5px ${w}px`;
+});
+window.addEventListener('mouseup', () => {
+  if (!_dragResize) return;
+  _dragResize = false;
+  document.body.classList.remove('dragging');
+  const w = mainEl.style.gridTemplateColumns.match(/(\d+)px$/);
+  if (w) localStorage.setItem(STORAGE_KEY, w[1]);
 });
 
 // Init
