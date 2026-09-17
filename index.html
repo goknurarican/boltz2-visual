@@ -53,6 +53,8 @@
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   }
   h1 { font-size: 12px; margin: 0; font-weight: 500; color: var(--text-strong); }
+  h1 a { color: inherit; text-decoration: none; border-bottom: 1px dotted transparent; transition: border-color 0.15s, color 0.15s; }
+  h1 a:hover { color: var(--accent); border-bottom-color: var(--accent); }
   h1 span { color: var(--muted); font-weight: 400; margin-left: 8px; }
 
   .cfg { display: inline-flex; align-items: center; gap: 10px; font-size: 11px; color: var(--muted); }
@@ -282,7 +284,7 @@
 <body>
 
 <header>
-  <h1>Boltz-2 <span>live architecture flow</span></h1>
+  <h1><a href="https://github.com/jwohlwend/boltz" target="_blank" rel="noopener noreferrer" title="Open jwohlwend/boltz on GitHub">Boltz-2</a> <span>live architecture flow</span></h1>
 
   <div class="cfg">
     <label>N_prot <input type="number" id="cfg-prot" value="20" min="4" max="200"></label>
