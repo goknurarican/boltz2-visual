@@ -1,0 +1,1317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boltz-2 · Live Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:          #0b0c0d;
+    --panel:       #131417;
+    --panel2:      #191b1f;
+    --border:      #24262b;
+    --border-hi:   #3a3d43;
+    --text:        #b8bcc3;
+    --text-strong: #dcdfe4;
+    --muted:       #6a6e75;
+    --accent:      #7c85f4;
+
+    --data-prot: #7a9ec9;
+    --data-lig:  #7dbb8f;
+    --data-msa:  #c9a976;
+    --data-tmpl: #a389c4;
+    --trunk:     #9b90d1;
+    --struct:    #d19b7d;
+    --conf:      #7dbfc4;
+    --aff:       #d47a86;
+    --pass1:     #7c85f4;
+    --pass2:     #d47a86;
+    --edge:      #3a3d43;
+    --edge-hi:   #d47a86;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px; line-height: 1.55; font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  h1 { font-size: 12px; margin: 0; font-weight: 500; color: var(--text-strong); }
+  h1 span { color: var(--muted); font-weight: 400; margin-left: 8px; }
+
+  .cfg { display: inline-flex; align-items: center; gap: 10px; font-size: 11px; color: var(--muted); }
+  .cfg label { display: inline-flex; align-items: center; gap: 5px; }
+  .cfg input[type=number] {
+    width: 48px; padding: 3px 6px; font: inherit;
+    background: var(--panel2); color: var(--text-strong);
+    border: 1px solid var(--border-hi); border-radius: 3px;
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text); }
+  .toggle input {
+    appearance: none; width: 26px; height: 14px;
+    background: var(--panel2); border: 1px solid var(--border-hi);
+    border-radius: 8px; position: relative; cursor: pointer;
+  }
+  .toggle input:after {
+    content: ""; position: absolute; top: 1px; left: 1px;
+    width: 10px; height: 10px; background: var(--muted); border-radius: 50%;
+    transition: left 0.15s, background 0.15s;
+  }
+  .toggle input:checked { background: var(--aff); border-color: var(--aff); }
+  .toggle input:checked:after { left: 13px; background: var(--bg); }
+
+  .ctrls { display: inline-flex; align-items: center; gap: 4px; }
+  .ctrls button {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border-hi); border-radius: 3px;
+    padding: 4px 10px; font-family: inherit; font-size: 11px;
+    cursor: pointer;
+  }
+  .ctrls button:hover { background: var(--border-hi); color: var(--text-strong); }
+  .ctrls .primary {
+    background: var(--accent); color: var(--bg); border-color: var(--accent);
+    font-weight: 500; min-width: 60px;
+  }
+  .ctrls .primary:hover { filter: brightness(1.1); }
+  .step-count {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    color: var(--muted); padding: 0 8px;
+  }
+  .speed { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--muted); }
+  .speed input { width: 60px; }
+
+  main { display: grid; grid-template-columns: 1fr 400px; min-height: calc(100vh - 46px); }
+  #stage { position: relative; overflow: auto; }
+
+  aside {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow: auto;
+    position: sticky; top: 46px; height: calc(100vh - 46px);
+    display: flex; flex-direction: column;
+  }
+  .aside-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
+  .aside-progress {
+    height: 3px; background: var(--panel2);
+    position: relative; border-bottom: 1px solid var(--border);
+  }
+  .aside-progress-bar {
+    position: absolute; left: 0; top: 0; height: 100%;
+    background: var(--accent); transition: width 0.3s;
+  }
+
+  aside .kicker {
+    font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 6px;
+  }
+  aside h2 {
+    font-size: 15px; margin: 0 0 8px 0; font-weight: 500;
+    color: var(--text-strong); letter-spacing: -0.2px;
+  }
+  aside .step-badge {
+    display: inline-block; font-family: "IBM Plex Mono", monospace;
+    font-size: 10px; padding: 1px 6px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 2px;
+    margin-right: 6px; vertical-align: middle;
+  }
+  aside .shape {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; color: var(--data-lig);
+    margin: 6px 0; padding: 5px 9px;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 3px;
+  }
+  aside .shape::before { content: "shape  "; color: var(--muted); }
+  aside .file {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px; color: var(--muted);
+    margin: 6px 0 12px 0; word-break: break-all;
+  }
+  aside .file::before { content: "→ "; color: var(--accent); }
+  aside p { font-size: 12px; line-height: 1.65; margin: 8px 0; color: var(--text); }
+  aside code {
+    font-family: "IBM Plex Mono", monospace;
+    background: var(--panel2); padding: 1px 5px;
+    border: 1px solid var(--border); border-radius: 3px;
+    font-size: 10.5px; color: var(--data-msa);
+  }
+
+  .op-block {
+    margin: 14px 0; padding: 12px;
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .op-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .op-row {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin: 6px 0;
+  }
+  .op-sym {
+    font-family: "IBM Plex Mono", monospace; font-size: 14px;
+    color: var(--text-strong); padding: 0 3px;
+  }
+  .op-formula {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    color: var(--text); background: var(--bg);
+    padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 3px; margin-top: 10px;
+    word-break: break-word; line-height: 1.6;
+  }
+
+  /* Tensor viz card */
+  .tensor {
+    display: inline-flex; flex-direction: column; align-items: flex-start;
+    padding: 6px 8px; background: var(--bg);
+    border: 1px solid var(--border-hi); border-radius: 3px;
+    gap: 5px; min-width: 60px;
+  }
+  .tensor-name {
+    font-family: "IBM Plex Mono", monospace; font-size: 10px;
+    color: var(--text-strong);
+  }
+  .tensor-shape {
+    font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+    color: var(--muted);
+  }
+  .tensor-viz {
+    display: block;
+  }
+  .tensor.scalar .tensor-viz {
+    width: 12px; height: 12px; background: currentColor; border-radius: 2px;
+  }
+
+  svg { display: block; }
+
+  .node { cursor: pointer; }
+  .node rect { transition: opacity 0.2s, stroke 0.15s, stroke-width 0.15s, fill 0.2s; }
+  .node text { pointer-events: none; user-select: none; }
+  .node:hover rect { stroke: var(--border-hi); }
+  .node.active rect {
+    stroke: var(--accent); stroke-width: 2;
+    fill: var(--panel2);
+    filter: drop-shadow(0 0 12px rgba(124, 133, 244, 0.3));
+  }
+  .node.active-aff rect {
+    stroke: var(--aff); stroke-width: 2;
+    fill: var(--panel2);
+    filter: drop-shadow(0 0 12px rgba(212, 122, 134, 0.3));
+  }
+
+  .edge {
+    fill: none; stroke: var(--edge); stroke-width: 1;
+    transition: opacity 0.25s, stroke 0.25s, stroke-width 0.25s;
+  }
+  .edge-label { fill: var(--muted); font-size: 9.5px; font-family: "IBM Plex Mono", monospace; }
+  .edge.aff { stroke: var(--edge-hi); stroke-dasharray: 3 3; stroke-width: 1; }
+  .band { fill: none; stroke: var(--border); stroke-dasharray: 2 4; stroke-width: 1; }
+  .band-label { fill: var(--muted); font-size: 9.5px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; }
+  .pass-tag { font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 500; letter-spacing: 1px; }
+
+  .dim-affinity .aff-only { opacity: 0.28; }
+  .dim-affinity .edge.aff { opacity: 0.22; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Boltz-2 <span>live architecture flow</span></h1>
+
+  <div class="cfg">
+    <label>N_prot <input type="number" id="cfg-prot" value="20" min="4" max="200"></label>
+    <label>N_lig  <input type="number" id="cfg-lig"  value="8"  min="1" max="128"></label>
+    <label>S (MSA) <input type="number" id="cfg-msa" value="32" min="1" max="256"></label>
+  </div>
+
+  <label class="toggle">
+    <input type="checkbox" id="affToggle" checked>
+    <span>affinity = <span id="affState">true</span></span>
+  </label>
+
+  <div class="ctrls">
+    <button id="btn-prev" title="Previous step">◀</button>
+    <button id="btn-play" class="primary">▶ Play</button>
+    <button id="btn-next" title="Next step">▶</button>
+    <button id="btn-reset" title="Reset">↺</button>
+  </div>
+
+  <div class="step-count">
+    <span id="step-cur">0</span> / <span id="step-tot">—</span>
+  </div>
+
+  <div class="speed">
+    speed
+    <input type="range" id="speed" min="500" max="3000" step="250" value="1500">
+  </div>
+</header>
+
+<main>
+  <div id="stage">
+    <svg id="svg" width="1220" height="3120" viewBox="0 0 1220 3120" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"/>
+        </marker>
+        <marker id="arrow-aff" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--edge-hi)"/>
+        </marker>
+      </defs>
+
+      <!-- === BAND 01 === -->
+      <rect class="band" x="20" y="20" width="1180" height="180" rx="4"/>
+      <text class="band-label" x="34" y="40">01  data preparation</text>
+
+      <g class="node" data-id="protein">
+        <rect x="60" y="60" width="220" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="60" x2="60" y2="170" stroke="var(--data-prot)" stroke-width="2"/>
+        <text x="76" y="88" fill="var(--data-prot)" font-weight="600" font-size="12">Protein sequence</text>
+        <text x="76" y="110" fill="var(--text)" font-size="11">FASTA / mmCIF</text>
+        <text x="76" y="128" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">mol_type = PROTEIN (0)</text>
+        <text x="76" y="146" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">residue → 1 token</text>
+      </g>
+
+      <g class="node" data-id="ligand">
+        <rect x="300" y="60" width="220" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="300" y1="60" x2="300" y2="170" stroke="var(--data-lig)" stroke-width="2"/>
+        <text x="316" y="88" fill="var(--data-lig)" font-weight="600" font-size="12">Ligand</text>
+        <text x="316" y="110" fill="var(--text)" font-size="11">SMILES / SDF / CCD</text>
+        <text x="316" y="128" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">mol_type = NONPOLYMER (3)</text>
+        <text x="316" y="146" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">heavy atom → 1 token</text>
+      </g>
+
+      <g class="node" data-id="msa">
+        <rect x="540" y="60" width="220" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="540" y1="60" x2="540" y2="170" stroke="var(--data-msa)" stroke-width="2"/>
+        <text x="556" y="88" fill="var(--data-msa)" font-weight="600" font-size="12">MSA</text>
+        <text x="556" y="110" fill="var(--text)" font-size="11">a3m (mmseqs2 / ColabFold)</text>
+        <text x="556" y="128" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">S × N one-hot</text>
+        <text x="556" y="146" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">+ deletion + paired</text>
+      </g>
+
+      <g class="node" data-id="template">
+        <rect x="780" y="60" width="220" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="780" y1="60" x2="780" y2="170" stroke="var(--data-tmpl)" stroke-width="2"/>
+        <text x="796" y="88" fill="var(--data-tmpl)" font-weight="600" font-size="12">Templates (optional)</text>
+        <text x="796" y="110" fill="var(--text)" font-size="11">mmCIF — T templates</text>
+        <text x="796" y="128" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">Cα / Cβ + frames</text>
+        <text x="796" y="146" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">visibility_ids</text>
+      </g>
+
+      <g class="node aff-only" data-id="affinfo">
+        <rect x="1020" y="60" width="160" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="1020" y1="60" x2="1020" y2="170" stroke="var(--aff)" stroke-width="2"/>
+        <text x="1036" y="88" fill="var(--aff)" font-weight="600" font-size="12">Affinity Info</text>
+        <text x="1036" y="110" fill="var(--text)" font-size="11">YAML: affinity</text>
+        <text x="1036" y="128" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">binder = chain_id</text>
+        <text x="1036" y="146" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">mw = RDKit MolWt</text>
+      </g>
+
+      <!-- === BAND 02 === -->
+      <rect class="band" x="20" y="220" width="1180" height="130" rx="4"/>
+      <text class="band-label" x="34" y="240">02  featurizer  ·  shared inputs</text>
+
+      <g class="node" data-id="tokenize">
+        <rect x="60" y="260" width="700" height="80" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="260" x2="60" y2="340" stroke="var(--accent)" stroke-width="2"/>
+        <text x="76" y="284" fill="var(--text-strong)" font-weight="600" font-size="12">tokenize_structure(struct, affinity)</text>
+        <text x="76" y="303" fill="var(--text)" font-size="11">protein: residue-per-token · ligand: atom-per-token</text>
+        <text x="76" y="323" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace">data/tokenize/boltz2.py:132  ·  affinity_mask = (asym_id == affinity.chain_id)</text>
+      </g>
+
+      <g class="node aff-only" data-id="featurizer-aff">
+        <rect x="780" y="260" width="400" height="80" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="780" y1="260" x2="780" y2="340" stroke="var(--aff)" stroke-width="2"/>
+        <text x="796" y="284" fill="var(--aff)" font-weight="600" font-size="12">process_msa_features(affinity=True)</text>
+        <text x="796" y="303" fill="var(--text)" font-size="11">query-only profile (max_seqs = 1)</text>
+        <text x="796" y="323" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace">profile_affinity · deletion_mean_affinity · mw</text>
+      </g>
+
+      <!-- === PASS 1 === -->
+      <rect class="band" x="20" y="380" width="1180" height="1220" rx="4" stroke="var(--pass1)"/>
+      <text class="band-label" x="34" y="402" fill="var(--pass1)">pass 1  ·  Boltz2.load_from_checkpoint(checkpoint)  ·  main.py:1314</text>
+      <text class="pass-tag" x="1050" y="402" fill="var(--pass1)">trainer.predict #1  →  main.py:1329</text>
+
+      <rect class="band" x="40" y="420" width="1140" height="580" rx="4"/>
+      <text class="band-label" x="54" y="440">03  trunk  ·  recycling × (n+1)</text>
+
+      <g class="node" data-id="embed">
+        <rect x="60" y="465" width="500" height="100" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="465" x2="60" y2="565" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="76" y="489" fill="var(--trunk)" font-weight="600" font-size="12">InputEmbedder(feats)</text>
+        <text x="76" y="510" fill="var(--text)" font-size="11">AtomEncoder → AtomAttentionEncoder → atoms averaged into tokens</text>
+        <text x="76" y="528" fill="var(--text)" font-size="11">+ res_type + msa_profile encoding</text>
+        <text x="76" y="551" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">out  s_inputs [B, N, 384]</text>
+      </g>
+
+      <g class="node" data-id="zinit">
+        <rect x="60" y="585" width="500" height="120" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="585" x2="60" y2="705" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="76" y="609" fill="var(--trunk)" font-weight="600" font-size="12">z_init construction</text>
+        <text x="76" y="630" fill="var(--text)" font-size="11">z_init = W₁·s[:,:,None] + W₂·s[:,None,:]</text>
+        <text x="76" y="648" fill="var(--text)" font-size="11">+ RelativePositionEncoder + token_bonds + ContactConditioning</text>
+        <text x="76" y="691" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">out  z_init [B, N, N, 128]</text>
+      </g>
+
+      <g class="node" data-id="template-mod">
+        <rect x="600" y="465" width="270" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="600" y1="465" x2="600" y2="535" stroke="var(--data-tmpl)" stroke-width="2"/>
+        <text x="616" y="489" fill="var(--data-tmpl)" font-weight="600" font-size="12">TemplateV2Module</text>
+        <text x="616" y="508" fill="var(--text)" font-size="11">Cα/Cβ distogram + frames</text>
+        <text x="616" y="525" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">z += u   [B, N, N, 128]</text>
+      </g>
+
+      <g class="node" data-id="msa-mod">
+        <rect x="600" y="555" width="270" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="600" y1="555" x2="600" y2="625" stroke="var(--data-msa)" stroke-width="2"/>
+        <text x="616" y="579" fill="var(--data-msa)" font-weight="600" font-size="12">MSAModule</text>
+        <text x="616" y="598" fill="var(--text)" font-size="11">PWA + OuterProductMean → z</text>
+        <text x="616" y="615" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">4 blocks · msa_s = 64</text>
+      </g>
+
+      <g class="node" data-id="pairformer">
+        <rect x="600" y="645" width="270" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="600" y1="645" x2="600" y2="715" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="616" y="669" fill="var(--trunk)" font-weight="600" font-size="12">PairformerModule</text>
+        <text x="616" y="688" fill="var(--text)" font-size="11">Triangle(mul + attn) + AttnPairBias</text>
+        <text x="616" y="705" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">48 blocks · s + z</text>
+      </g>
+
+      <g class="node" data-id="recycling">
+        <rect x="900" y="500" width="260" height="180" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="900" y1="500" x2="900" y2="680" stroke="var(--accent)" stroke-width="2"/>
+        <text x="916" y="524" fill="var(--accent)" font-weight="600" font-size="12">Recycling</text>
+        <text x="916" y="546" fill="var(--text)" font-size="11">s = s_init + W(LN s)</text>
+        <text x="916" y="564" fill="var(--text)" font-size="11">z = z_init + W(LN z)</text>
+        <text x="916" y="590" fill="var(--muted)" font-size="10.5">only last iter grad</text>
+        <text x="916" y="630" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">pass 1: 3 iters</text>
+      </g>
+
+      <g class="node" data-id="s-out">
+        <rect x="180" y="760" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="180" y1="760" x2="180" y2="830" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="196" y="784" fill="var(--trunk)" font-weight="600" font-size="12">s (token single)</text>
+        <text x="196" y="804" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">[B, N, 384]</text>
+        <text x="196" y="820" fill="var(--muted)" font-size="10.5">per-token hidden state</text>
+      </g>
+
+      <g class="node" data-id="z-out">
+        <rect x="480" y="760" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="480" y1="760" x2="480" y2="830" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="496" y="784" fill="var(--trunk)" font-weight="600" font-size="12">z (token pair)</text>
+        <text x="496" y="804" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">[B, N, N, 128]</text>
+        <text x="496" y="820" fill="var(--muted)" font-size="10.5">interface / distance info</text>
+      </g>
+
+      <g class="node" data-id="distogram">
+        <rect x="780" y="760" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="780" y1="760" x2="780" y2="830" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="796" y="784" fill="var(--trunk)" font-weight="600" font-size="12">DistogramModule</text>
+        <text x="796" y="804" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">pdistogram [N, N, 64]</text>
+        <text x="796" y="820" fill="var(--muted)" font-size="10.5">→ feeds confidence</text>
+      </g>
+
+      <g class="node" data-id="diffcond">
+        <rect x="180" y="870" width="820" height="90" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="180" y1="870" x2="180" y2="960" stroke="var(--struct)" stroke-width="2"/>
+        <text x="196" y="894" fill="var(--struct)" font-weight="600" font-size="12">DiffusionConditioning(s, z, rel_pos, feats)</text>
+        <text x="196" y="916" fill="var(--text)" font-size="11">PairwiseConditioning · AtomEncoder(structure=True)</text>
+        <text x="196" y="940" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">out  q, c, to_keys, atom_enc_bias, atom_dec_bias, token_trans_bias</text>
+      </g>
+
+      <rect class="band" x="40" y="1020" width="1140" height="320" rx="4"/>
+      <text class="band-label" x="54" y="1040">04  structure  ·  diffusion sampling</text>
+
+      <g class="node" data-id="atomdiff">
+        <rect x="60" y="1065" width="480" height="220" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="1065" x2="60" y2="1285" stroke="var(--struct)" stroke-width="2"/>
+        <text x="76" y="1089" fill="var(--struct)" font-weight="600" font-size="12">AtomDiffusion.sample(...)</text>
+        <text x="76" y="1110" fill="var(--text)" font-size="11">EDM preconditioning (Karras 2022):</text>
+        <text x="76" y="1128" fill="var(--text)" font-size="11">c_skip, c_out, c_in, c_noise · σ_max=160 → σ_min=4e-4 · rho=7</text>
+        <text x="76" y="1150" fill="var(--text)" font-size="11">per step: random SE(3) augment → add t̂ noise →</text>
+        <text x="76" y="1168" fill="var(--text)" font-size="11">DiffusionModule (AtomAttn → TokenTx → AtomAttn) → r_update</text>
+        <text x="76" y="1186" fill="var(--text)" font-size="11">x̂ = c_skip · x + c_out · r_update</text>
+        <text x="76" y="1210" fill="var(--text)" font-size="11">optional steering: FK / physical / contact guidance</text>
+        <text x="76" y="1240" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">out  sample_atom_coords [S, M, 3]</text>
+        <text x="76" y="1260" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace">model/modules/diffusionv2.py:295</text>
+      </g>
+
+      <g class="node" data-id="coords">
+        <rect x="580" y="1130" width="240" height="90" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="580" y1="1130" x2="580" y2="1220" stroke="var(--struct)" stroke-width="2"/>
+        <text x="596" y="1154" fill="var(--struct)" font-weight="600" font-size="12">sample_atom_coords</text>
+        <text x="596" y="1176" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">[S, M, 3]</text>
+        <text x="596" y="1194" fill="var(--muted)" font-size="10.5">S = diffusion_samples</text>
+        <text x="596" y="1210" fill="var(--muted)" font-size="10.5">→ writes model_0..S-1.pdb</text>
+      </g>
+
+      <g class="node" data-id="pdistogram">
+        <rect x="860" y="1130" width="200" height="90" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="860" y1="1130" x2="860" y2="1220" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="876" y="1154" fill="var(--trunk)" font-weight="600" font-size="12">pdistogram</text>
+        <text x="876" y="1176" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">[B, N, N, 64]</text>
+        <text x="876" y="1194" fill="var(--muted)" font-size="10.5">head logits</text>
+      </g>
+
+      <rect class="band" x="40" y="1360" width="1140" height="220" rx="4"/>
+      <text class="band-label" x="54" y="1380">05  confidence</text>
+
+      <g class="node" data-id="confidence">
+        <rect x="60" y="1405" width="700" height="140" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="1405" x2="60" y2="1545" stroke="var(--conf)" stroke-width="2"/>
+        <text x="76" y="1429" fill="var(--conf)" font-weight="600" font-size="12">ConfidenceModule(s, z, x_pred, feats)  ·  trunk grad .detach()</text>
+        <text x="76" y="1451" fill="var(--text)" font-size="11">z′ = LN(z) + s→z + s→zᵀ · cdist(x_pred) → distogram embed</text>
+        <text x="76" y="1469" fill="var(--text)" font-size="11">second PairformerModule (v2) runs → s′, z′</text>
+        <text x="76" y="1487" fill="var(--text)" font-size="11">Heads: pLDDT · PAE · PDE · resolved</text>
+        <text x="76" y="1510" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">out  plddt, pae, pde, iptm, ptm, ligand_iptm, protein_iptm</text>
+        <text x="76" y="1530" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace">model/modules/confidencev2.py</text>
+      </g>
+
+      <g class="node" data-id="iptm">
+        <rect x="800" y="1425" width="230" height="100" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="800" y1="1425" x2="800" y2="1525" stroke="var(--conf)" stroke-width="2"/>
+        <text x="816" y="1449" fill="var(--conf)" font-weight="600" font-size="12">iptm  [S]</text>
+        <text x="816" y="1470" fill="var(--text)" font-size="11">interface pTM score</text>
+        <text x="816" y="1489" fill="var(--muted)" font-size="10.5">per diffusion sample</text>
+        <text x="816" y="1505" fill="var(--muted)" font-size="10.5">→ confidence_summary.json</text>
+      </g>
+
+      <g>
+        <rect x="60" y="1560" width="1120" height="30" rx="3" fill="none" stroke="var(--pass1)" stroke-width="1" stroke-dasharray="2 3"/>
+        <text x="76" y="1580" fill="var(--pass1)" font-size="10.5" font-family="IBM Plex Mono, monospace">pass 1 outputs  ·  model_0..S-1.pdb  ·  confidence_summary.json  ·  AffinityModule NOT present in structure ckpt</text>
+      </g>
+
+      <!-- === PASS 2 === -->
+      <rect class="band aff-only" x="20" y="1620" width="1180" height="1480" rx="4" stroke="var(--pass2)"/>
+      <text class="band-label aff-only" x="34" y="1642" fill="var(--pass2)">pass 2  ·  Boltz2.load_from_checkpoint(affinity_checkpoint)  ·  main.py:1391</text>
+      <text class="pass-tag aff-only" x="1050" y="1642" fill="var(--pass2)">trainer.predict #2  →  main.py:1406</text>
+
+      <g class="node aff-only" data-id="pass2-trigger">
+        <rect x="40" y="1660" width="1140" height="90" rx="3" fill="var(--panel)" stroke="var(--pass2)" stroke-width="1.5"/>
+        <line x1="40" y1="1660" x2="40" y2="1750" stroke="var(--pass2)" stroke-width="2"/>
+        <text x="60" y="1684" fill="var(--pass2)" font-weight="600" font-size="12">Trigger  ·  if any(r.affinity for r in manifest.records)  ·  main.py:1336</text>
+        <text x="60" y="1706" fill="var(--text)" font-size="11">A second Boltz2 is instantiated from boltz2_aff.ckpt (different weights, AffinityModule enabled).</text>
+        <text x="60" y="1724" fill="var(--text)" font-size="11">Fresh DataModule with affinity=True. steering_args disabled. sampling_steps_affinity, diffusion_samples_affinity.</text>
+        <text x="60" y="1744" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">recycling_steps=5 · max_parallel_samples=1 · pred_writer = BoltzAffinityWriter</text>
+      </g>
+
+      <g class="node aff-only" data-id="rerun">
+        <rect x="40" y="1770" width="1140" height="80" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"/>
+        <line x1="40" y1="1770" x2="40" y2="1850" stroke="var(--pass2)" stroke-width="2"/>
+        <text x="60" y="1794" fill="var(--pass2)" font-weight="600" font-size="12">Full trunk + AtomDiffusion.sample() + ConfidenceModule RE-RUN with affinity weights</text>
+        <text x="60" y="1814" fill="var(--text)" font-size="11">Boltz2.forward runs the entire structure pipeline again (bands 03–05) under the aff ckpt — trunk, diffusion, confidence.</text>
+        <text x="60" y="1834" fill="var(--text)" font-size="11">The re-sampled pose reproduces pass 1's model_0.pdb (verified in C test).</text>
+      </g>
+
+      <g class="node aff-only" data-id="trunk-p2">
+        <rect x="60" y="1875" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="1875" x2="60" y2="1945" stroke="var(--trunk)" stroke-width="2"/>
+        <text x="76" y="1898" fill="var(--trunk)" font-weight="600" font-size="12">Trunk (re-run)</text>
+        <text x="76" y="1918" fill="var(--text)" font-size="11">produces new s, z</text>
+        <text x="76" y="1934" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">under aff ckpt weights</text>
+      </g>
+
+      <g class="node aff-only" data-id="diffusion-p2">
+        <rect x="300" y="1875" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="300" y1="1875" x2="300" y2="1945" stroke="var(--struct)" stroke-width="2"/>
+        <text x="316" y="1898" fill="var(--struct)" font-weight="600" font-size="12">AtomDiffusion.sample()</text>
+        <text x="316" y="1918" fill="var(--text)" font-size="11">re-samples poses</text>
+        <text x="316" y="1934" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">no steering</text>
+      </g>
+
+      <g class="node aff-only" data-id="confidence-p2">
+        <rect x="540" y="1875" width="220" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="540" y1="1875" x2="540" y2="1945" stroke="var(--conf)" stroke-width="2"/>
+        <text x="556" y="1898" fill="var(--conf)" font-weight="600" font-size="12">ConfidenceModule</text>
+        <text x="556" y="1918" fill="var(--text)" font-size="11">produces pass 2 iptm</text>
+        <text x="556" y="1934" fill="var(--muted)" font-size="10.5" font-family="IBM Plex Mono, monospace">used by argmax below</text>
+      </g>
+
+      <g class="node aff-only" data-id="embed-p2">
+        <rect x="780" y="1875" width="380" height="70" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="780" y1="1875" x2="780" y2="1945" stroke="var(--aff)" stroke-width="2"/>
+        <text x="796" y="1898" fill="var(--aff)" font-weight="600" font-size="12">InputEmbedder(feats, affinity=True)</text>
+        <text x="796" y="1918" fill="var(--text)" font-size="11">uses profile_affinity (band 02)</text>
+        <text x="796" y="1934" fill="var(--data-lig)" font-size="10.5" font-family="IBM Plex Mono, monospace">out  s_inputs′ [1, N, 384]</text>
+      </g>
+
+      <g class="node aff-only" data-id="best-pose">
+        <rect x="60" y="1980" width="380" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="1980" x2="60" y2="2090" stroke="var(--aff)" stroke-width="2"/>
+        <text x="76" y="2004" fill="var(--aff)" font-weight="600" font-size="12">Best pose selection  ·  from pass 2</text>
+        <text x="76" y="2028" fill="var(--text)" font-size="11">best_idx = argmax(pass2.iptm)</text>
+        <text x="76" y="2046" fill="var(--text)" font-size="11">coords_affinity = pass2.sample_atom_coords[best_idx]</text>
+        <text x="76" y="2070" fill="var(--data-lig)" font-size="11" font-family="IBM Plex Mono, monospace">shape  [1, 1, M, 3]</text>
+      </g>
+
+      <g class="node aff-only" data-id="crossmask">
+        <rect x="480" y="1980" width="680" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="480" y1="1980" x2="480" y2="2090" stroke="var(--aff)" stroke-width="2"/>
+        <text x="496" y="2004" fill="var(--aff)" font-weight="600" font-size="12">cross_pair_mask  &  z_affinity</text>
+        <text x="496" y="2028" fill="var(--text)" font-size="11">rec_mask = (mol_type == 0) & pad   ·   lig_mask = affinity_token_mask & pad</text>
+        <text x="496" y="2048" fill="var(--text)" font-size="11">mask = lig⊗rec + rec⊗lig + lig⊗lig  →  z_aff = pass2.z · mask</text>
+        <text x="496" y="2072" fill="var(--muted)" font-size="10.5">protein–protein sub-block is fully zeroed</text>
+      </g>
+
+      <g class="node aff-only" data-id="affmod">
+        <rect x="60" y="2120" width="1100" height="220" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="2120" x2="60" y2="2340" stroke="var(--aff)" stroke-width="2"/>
+        <text x="76" y="2144" fill="var(--aff)" font-weight="600" font-size="12">AffinityModule.forward(s_inputs′, z_affinity, coords_affinity, feats)</text>
+        <text x="76" y="2170" fill="var(--text)" font-size="11">1. z = LinearNoBias(LN(z))  +  s′→z outer  (in1 + in2)</text>
+        <text x="76" y="2190" fill="var(--text)" font-size="11">2. x_pred_repr = token_to_rep_atom · x_pred  →  d = cdist  →  bin idx  →  dist_bin_pairwise_embed</text>
+        <text x="76" y="2210" fill="var(--text)" font-size="11">3. z += PairwiseConditioning(z, distogram_emb)</text>
+        <text x="76" y="2230" fill="var(--text)" font-size="11">4. PairformerNoSeqModule(z, pair_mask = cross_pair_mask)  ·  no s-track</text>
+        <text x="76" y="2250" fill="var(--text)" font-size="11">5. AffinityHeadsTransformer:</text>
+        <text x="106" y="2270" fill="var(--text)" font-size="11">g = Σᵢⱼ z_{ij} · mask(1 − I) / Σ mask   →   affinity_out_mlp   →   g [1, input_token_s]</text>
+        <text x="106" y="2290" fill="var(--text)" font-size="11">to_affinity_pred_value(g)  →  affinity_pred_value [1, 1]   (regression)</text>
+        <text x="106" y="2310" fill="var(--text)" font-size="11">to_affinity_pred_score(g)  →  score  →  to_affinity_logits_binary  →  logits_binary [1, 1]</text>
+        <text x="76" y="2330" fill="var(--muted)" font-size="10" font-family="IBM Plex Mono, monospace">model/modules/affinity.py:34</text>
+      </g>
+
+      <g class="node aff-only" data-id="ensemble">
+        <rect x="60" y="2380" width="520" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="60" y1="2380" x2="60" y2="2490" stroke="var(--aff)" stroke-width="2"/>
+        <text x="76" y="2404" fill="var(--aff)" font-weight="600" font-size="12">Ensemble average  ·  optional</text>
+        <text x="76" y="2428" fill="var(--text)" font-size="11">two independent AffinityModule instances (1 & 2)</text>
+        <text x="76" y="2448" fill="var(--text)" font-size="11">v̄ = (v₁ + v₂) / 2   ·   p̄ = (σ(l₁) + σ(l₂)) / 2</text>
+        <text x="76" y="2470" fill="var(--muted)" font-size="10.5">when affinity_ensemble = True</text>
+      </g>
+
+      <g class="node aff-only" data-id="mw">
+        <rect x="620" y="2380" width="540" height="110" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1"/>
+        <line x1="620" y1="2380" x2="620" y2="2490" stroke="var(--aff)" stroke-width="2"/>
+        <text x="636" y="2404" fill="var(--aff)" font-weight="600" font-size="12">MW correction  ·  default on</text>
+        <text x="636" y="2428" fill="var(--text)" font-size="11">mw = affinity_mw ** 0.3</text>
+        <text x="636" y="2448" fill="var(--text)" font-size="11">v′ = 1.03526 · v  −  0.59993 · mw  +  2.83288</text>
+        <text x="636" y="2470" fill="var(--muted)" font-size="10.5">post-training least-squares calibration</text>
+      </g>
+
+      <g class="node aff-only" data-id="finalout">
+        <rect x="330" y="2530" width="540" height="80" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1.5"/>
+        <line x1="330" y1="2530" x2="330" y2="2610" stroke="var(--aff)" stroke-width="3"/>
+        <text x="346" y="2556" fill="var(--aff)" font-weight="600" font-size="13">affinity_pred_value  ·  affinity_probability_binary</text>
+        <text x="346" y="2578" fill="var(--text)" font-size="11">binding affinity (pKd / pIC50-like) + binder / non-binder sigmoid</text>
+        <text x="346" y="2596" fill="var(--muted)" font-size="10.5">written by BoltzAffinityWriter  ·  affinity.json / .npz</text>
+      </g>
+
+      <g id="edges">
+        <path class="edge" d="M170,170 L170,260" marker-end="url(#arrow)"/>
+        <path class="edge" d="M410,170 C410,215 300,225 300,260" marker-end="url(#arrow)"/>
+        <path class="edge" d="M650,170 C650,215 500,225 500,260" marker-end="url(#arrow)"/>
+        <path class="edge" d="M890,170 C890,215 700,225 700,260" marker-end="url(#arrow)"/>
+        <path class="edge aff" d="M1100,170 C1100,220 980,225 980,260" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge" d="M410,340 C410,380 310,410 310,465" marker-end="url(#arrow)"/>
+        <text class="edge-label" x="420" y="380">token · atom · msa features</text>
+
+        <path class="edge aff" d="M980,340 C1050,900 1050,1700 970,1875" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge" d="M310,565 L310,585" marker-end="url(#arrow)"/>
+        <path class="edge" d="M560,620 C580,620 585,500 600,500" marker-end="url(#arrow)"/>
+        <path class="edge" d="M735,535 L735,555" marker-end="url(#arrow)"/>
+        <path class="edge" d="M735,625 L735,645" marker-end="url(#arrow)"/>
+        <path class="edge" d="M870,685 C885,685 885,590 900,590" marker-end="url(#arrow)"/>
+        <path class="edge" d="M900,560 C700,560 400,560 400,565" stroke-dasharray="3 3"/>
+        <text class="edge-label" x="700" y="555">recycled s, z</text>
+
+        <path class="edge" d="M700,700 C500,720 300,750 290,760" marker-end="url(#arrow)"/>
+        <path class="edge" d="M735,720 C650,740 590,750 590,760" marker-end="url(#arrow)"/>
+        <path class="edge" d="M700,795 L780,795" marker-end="url(#arrow)"/>
+
+        <path class="edge" d="M290,830 C290,850 350,860 400,870" marker-end="url(#arrow)"/>
+        <path class="edge" d="M590,830 L590,870" marker-end="url(#arrow)"/>
+
+        <path class="edge" d="M400,960 C400,1020 300,1040 300,1065" marker-end="url(#arrow)"/>
+        <path class="edge" d="M200,830 C110,900 100,970 110,1065" marker-end="url(#arrow)"/>
+
+        <path class="edge" d="M540,1175 L580,1175" marker-end="url(#arrow)"/>
+        <path class="edge" d="M890,830 C890,970 960,1100 960,1130" marker-end="url(#arrow)"/>
+
+        <path class="edge" d="M700,1220 C700,1300 400,1350 400,1405" marker-end="url(#arrow)"/>
+        <path class="edge" d="M960,1220 C960,1350 700,1400 700,1405" marker-end="url(#arrow)"/>
+        <path class="edge" d="M180,830 C100,1000 100,1350 100,1405" marker-end="url(#arrow)"/>
+        <path class="edge" d="M760,1475 L800,1475" marker-end="url(#arrow)"/>
+
+        <path class="edge aff" d="M620,1590 L620,1660" marker-end="url(#arrow-aff)" stroke-width="1.5"/>
+        <path class="edge aff" d="M620,1750 L620,1770" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge aff" d="M180,1850 L170,1875" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M420,1850 L410,1875" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M660,1850 L650,1875" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M900,1850 L970,1875" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge aff" d="M650,1945 C650,1965 250,1970 250,1980" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M410,1945 C410,1960 300,1965 300,1980" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M170,1945 C170,1960 700,1965 700,1980" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge aff" d="M250,2090 C250,2105 300,2110 300,2120" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M820,2090 C820,2105 700,2110 700,2120" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M970,1945 C970,2050 1000,2100 1000,2120" marker-end="url(#arrow-aff)"/>
+
+        <path class="edge aff" d="M320,2340 L320,2380" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M440,2340 L440,2380" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M580,2435 L620,2435" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M890,2490 C890,2510 700,2520 700,2530" marker-end="url(#arrow-aff)"/>
+        <path class="edge aff" d="M320,2490 C320,2510 500,2520 500,2530" marker-end="url(#arrow-aff)"/>
+      </g>
+    </svg>
+  </div>
+
+  <aside>
+    <div class="aside-progress"><div class="aside-progress-bar" id="progress"></div></div>
+    <div class="aside-body" id="info"></div>
+  </aside>
+</main>
+
+<script>
+// ============================================================
+// CONFIG (live inputs)
+// ============================================================
+let cfg = { N_prot: 20, N_lig: 8, S: 32, affinity: true };
+const D = { token_s: 384, token_z: 128, atom_s: 128, bins: 64, mono: 60 };  // D.mono is font width factor
+
+function readCfg() {
+  cfg.N_prot  = clamp(+document.getElementById('cfg-prot').value || 20, 1, 200);
+  cfg.N_lig   = clamp(+document.getElementById('cfg-lig').value  || 8,  1, 128);
+  cfg.S       = clamp(+document.getElementById('cfg-msa').value  || 32, 1, 256);
+  cfg.affinity= document.getElementById('affToggle').checked;
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function N() { return cfg.N_prot + cfg.N_lig; }
+function M() { return cfg.N_prot * 8 + cfg.N_lig; } // rough atom count estimate
+
+// ============================================================
+// TENSOR VISUALIZATION
+// ============================================================
+// Draw a small 2D grid; if 3D, stack isometric slabs; 4D shows 2D slice + depth annotation
+function seedVal(i, j, k) {
+  // deterministic pseudo-random in [0.2, 0.95]
+  const v = Math.abs(Math.sin(i * 12.9898 + j * 78.233 + (k || 0) * 37.719) * 43758.5453);
+  return 0.2 + (v - Math.floor(v)) * 0.75;
+}
+
+function renderTensor(name, shape, color) {
+  const dims = shape.length;
+  const shapeStr = '[' + shape.map(x => typeof x === 'string' ? x : x).join(', ') + ']';
+
+  let vizSvg = '';
+  const CELL = 5;
+  const MAX = 24;
+
+  if (dims === 1) {
+    const n = Math.min(shape[0] === '?' ? 20 : shape[0], MAX);
+    const cells = [];
+    for (let i = 0; i < n; i++) {
+      cells.push(`<rect x="${i*(CELL+1)}" y="0" width="${CELL}" height="${CELL*3}" fill="${color}" opacity="${seedVal(i,0)}"/>`);
+    }
+    vizSvg = `<svg class="tensor-viz" width="${n*(CELL+1)}" height="${CELL*3}">${cells.join('')}</svg>`;
+  }
+  else if (dims === 2) {
+    const h = Math.min(shape[0] === '?' ? 12 : shape[0], MAX);
+    const w = Math.min(shape[1] === '?' ? 12 : shape[1], MAX);
+    const cells = [];
+    for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
+      cells.push(`<rect x="${j*(CELL+1)}" y="${i*(CELL+1)}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j)}"/>`);
+    }
+    vizSvg = `<svg class="tensor-viz" width="${w*(CELL+1)}" height="${h*(CELL+1)}">${cells.join('')}</svg>`;
+  }
+  else if (dims === 3) {
+    // isometric stack — up to 3 slabs
+    const [b, h, w] = shape.map(x => typeof x === 'string' ? 8 : x);
+    const showB = Math.min(b, 3);
+    const showH = Math.min(h, MAX);
+    const showW = Math.min(w, MAX);
+    const off = 4;
+    const W = showW*(CELL+1) + showB*off;
+    const H = showH*(CELL+1) + showB*off;
+    let parts = '';
+    for (let s = showB - 1; s >= 0; s--) {
+      const dx = s * off, dy = s * off;
+      const cells = [];
+      for (let i = 0; i < showH; i++) for (let j = 0; j < showW; j++) {
+        cells.push(`<rect x="${j*(CELL+1)+dx}" y="${i*(CELL+1)+dy}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j,s)}"/>`);
+      }
+      parts += `<g>${cells.join('')}</g>`;
+    }
+    vizSvg = `<svg class="tensor-viz" width="${W}" height="${H}">${parts}</svg>`;
+  }
+  else if (dims === 4) {
+    // show one [h,w] slice, note depth in shape label
+    const [b, h, w, d] = shape.map(x => typeof x === 'string' ? 8 : x);
+    const showH = Math.min(h, MAX);
+    const showW = Math.min(w, MAX);
+    const cells = [];
+    for (let i = 0; i < showH; i++) for (let j = 0; j < showW; j++) {
+      cells.push(`<rect x="${j*(CELL+1)}" y="${i*(CELL+1)}" width="${CELL}" height="${CELL}" fill="${color}" opacity="${seedVal(i,j)}"/>`);
+    }
+    // little bar showing depth
+    const bars = [];
+    for (let k = 0; k < 8; k++) {
+      bars.push(`<rect x="${showW*(CELL+1)+8+k*3}" y="${(showH*(CELL+1))/2 - 10}" width="2" height="20" fill="${color}" opacity="${seedVal(k,k)*0.9}"/>`);
+    }
+    const W = showW*(CELL+1) + 40;
+    const H = showH*(CELL+1);
+    vizSvg = `<svg class="tensor-viz" width="${W}" height="${H}">${cells.join('')}${bars.join('')}<text x="${showW*(CELL+1)+8}" y="${H-2}" font-size="9" fill="var(--muted)" font-family="IBM Plex Mono, monospace">×${d}</text></svg>`;
+  }
+  else {
+    vizSvg = `<div class="tensor-viz" style="width:20px;height:12px;background:${color};opacity:0.6"></div>`;
+  }
+
+  return `<div class="tensor">
+    <span class="tensor-name">${name}</span>
+    ${vizSvg}
+    <span class="tensor-shape">${shapeStr}</span>
+  </div>`;
+}
+
+// ============================================================
+// STEP DEFINITIONS
+// ============================================================
+// Each step: { id, node, title, shape, file, desc, op: {inputs, sym, output, formula} }
+function buildSteps() {
+  const N_p = cfg.N_prot, N_l = cfg.N_lig, N_ = N_p + N_l, S = cfg.S;
+  const Mn = M();
+  const C = {
+    prot: '#7a9ec9', lig: '#7dbb8f', msa: '#c9a976', tmpl: '#a389c4',
+    trunk: '#9b90d1', struct: '#d19b7d', conf: '#7dbfc4', aff: '#d47a86',
+    accent: '#7c85f4',
+  };
+
+  const steps = [
+    {
+      id: 'config', node: null,
+      title: 'Inputs configured',
+      shape: `N_prot=${N_p} · N_lig=${N_l} · N=${N_} · S=${S}`,
+      file: 'CLI: boltz predict',
+      desc: `Total token count N = N_prot + N_lig = ${N_}. MSA depth S = ${S}. Approx atom count M ≈ ${Mn} (protein ~8 heavy atoms/residue). Click Play to run the flow.`,
+    },
+    {
+      id: 'protein', node: 'protein',
+      title: 'Protein sequence loaded',
+      shape: `[${N_p}] residue ids`,
+      file: 'data/parse/schema.py',
+      desc: 'Each standard amino acid tokenizes 1:1 to a residue token. mol_type = PROTEIN (0). Feeds MSA + template pipeline.',
+      op: { inputs: [], sym: null, output: { name: 'protein_tokens', shape: [N_p], color: C.prot } }
+    },
+    {
+      id: 'ligand', node: 'ligand',
+      title: 'Ligand tokenized per atom',
+      shape: `[${N_l}] heavy-atom tokens`,
+      file: 'data/tokenize/boltz2.py:260',
+      desc: 'SMILES → RDKit 3D → each heavy atom becomes its own token. mol_type = NONPOLYMER (3). Affinity mode requires a single chain / single copy.',
+      op: { inputs: [], sym: null, output: { name: 'ligand_tokens', shape: [N_l], color: C.lig } }
+    },
+    {
+      id: 'msa', node: 'msa',
+      title: 'MSA matrix',
+      shape: `[${S}, ${N_p}] token ids`,
+      file: 'data/msa/mmseqs2.py',
+      desc: 'Multiple sequence alignment for the protein chain(s). Produces profile [N, num_tokens], deletion_mean [N], has_deletion, msa_paired.',
+      op: { inputs: [], sym: null, output: { name: 'msa', shape: [S, N_p], color: C.msa } }
+    },
+    {
+      id: 'tokenize', node: 'tokenize',
+      title: 'tokenize_structure — merge into token table',
+      shape: `[${N_}] combined tokens`,
+      file: 'data/tokenize/boltz2.py:132',
+      desc: 'Protein and ligand tokens concatenate into a single token table of length N. Each token gets affinity_mask (1 iff its chain is the affinity binder).',
+      op: {
+        inputs: [
+          { name: 'protein', shape: [N_p], color: C.prot },
+          { name: 'ligand',  shape: [N_l], color: C.lig  },
+        ],
+        sym: '⊕ concat',
+        output: { name: 'tokens', shape: [N_], color: C.accent },
+        formula: 'tokens = concat(protein_tokens, ligand_tokens)   ·   N = N_prot + N_lig'
+      }
+    },
+    {
+      id: 'featurizer', node: 'tokenize',
+      title: 'Featurizer builds tensors',
+      shape: `token_features · atom_features · msa_features`,
+      file: 'data/feature/featurizerv2.py',
+      desc: 'Featurizer produces token-level features (mol_type, res_type, bonds, contact_conditioning, affinity_token_mask) and atom-level features (ref_pos, ref_element, ref_charge, atom_backbone_feat) and MSA features (msa, profile, deletion_value, msa_paired).',
+      op: {
+        inputs: [ { name: 'tokens', shape: [N_], color: C.accent } ],
+        sym: '→ featurize',
+        output: { name: 'feats', shape: [N_, 'F'], color: C.accent },
+        formula: 'feats = { token_pad_mask · mol_type · res_type · atom_pad_mask · ref_pos · profile · msa · ... }'
+      }
+    },
+    {
+      id: 'featurizer-aff', node: 'featurizer-aff',
+      title: 'Affinity-only featurizer branch',
+      shape: `profile_affinity [${N_}, 33] · affinity_mw scalar`,
+      file: 'data/feature/featurizerv2.py:1647-1651',
+      desc: 'Re-runs the MSA path with max_seqs=1 (query-only) so the affinity branch sees a clean, co-evolution-free profile. Also emits affinity_token_mask and the scalar mw. Both passes see these via the shared featurizer.',
+      op: {
+        inputs: [ { name: 'msa', shape: [S, N_p], color: C.msa } ],
+        sym: '→ max_seqs=1',
+        output: { name: 'profile_affinity', shape: [N_, 33], color: C.aff },
+        formula: 'profile_affinity = mean(msa[:1], dim=0)   ·   deletion_mean_affinity  ·   affinity_mw'
+      }
+    },
+    {
+      id: 'embed', node: 'embed',
+      title: 'InputEmbedder → s_inputs',
+      shape: `s_inputs [1, ${N_}, ${D.token_s}]`,
+      file: 'model/modules/trunkv2.py:68',
+      desc: 'AtomEncoder + AtomAttentionEncoder aggregate atom features into per-token vectors. Then res_type + msa_profile encodings are added. Output is the initial token single stream.',
+      op: {
+        inputs: [
+          { name: 'feats',   shape: [N_, 'F'], color: C.accent },
+          { name: 'profile', shape: [N_, 33],  color: C.msa },
+        ],
+        sym: '→ MLP + attention',
+        output: { name: 's_inputs', shape: [1, N_, D.token_s], color: C.trunk },
+        formula: 's_inputs = res_type_enc(res_type) + msa_profile_enc(profile) + AtomAttentionEncoder(atoms)'
+      }
+    },
+    {
+      id: 'zinit', node: 'zinit',
+      title: 'z_init — outer sum to pair stream',
+      shape: `z_init [1, ${N_}, ${N_}, ${D.token_z}]`,
+      file: 'model/models/boltz2.py:421-430',
+      desc: 'The pair stream z is built as an outer sum of two linear projections of s_inputs, then enriched with relative position, token bonds, and contact conditioning. This is the substrate for all pairwise reasoning.',
+      op: {
+        inputs: [ { name: 's_inputs', shape: [1, N_, D.token_s], color: C.trunk } ],
+        sym: '→ W₁ ⊕ W₂ (outer sum)',
+        output: { name: 'z_init', shape: [1, N_, N_, D.token_z], color: C.trunk },
+        formula: 'z_init[i,j] = W₁ · s[i] + W₂ · s[j] + rel_pos(i,j) + token_bonds(i,j) + contact(i,j)'
+      }
+    },
+    {
+      id: 'msamod', node: 'msa-mod',
+      title: 'MSAModule — MSA → z messages',
+      shape: `z [1, ${N_}, ${N_}, ${D.token_z}]`,
+      file: 'model/modules/trunkv2.py:512',
+      desc: 'MSA becomes a hidden stack m [B, S, N, 64]. Each block: PairWeightedAveraging (weighted by z), Transition, OuterProductMean (m → z), PairformerNoSeqLayer (triangles on z). Runs 4 blocks.',
+      op: {
+        inputs: [
+          { name: 'z',   shape: [1, N_, N_, D.token_z], color: C.trunk },
+          { name: 'msa', shape: [S, N_p],               color: C.msa   },
+        ],
+        sym: '→ 4× MSA blocks',
+        output: { name: 'z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+        formula: 'z ← z + OuterProductMean(m, msa_mask) ; m ← m + PairWeightedAvg(m, z)'
+      }
+    },
+    {
+      id: 'pairformer', node: 'pairformer',
+      title: 'PairformerModule — 48 triangle blocks',
+      shape: `s, z after 48 blocks`,
+      file: 'model/layers/pairformer.py:116',
+      desc: 'z: TriangleMulOutgoing + TriangleMulIncoming + TriangleAttentionStartingNode + TriangleAttentionEndingNode + Transition. s: AttentionPairBias (self-attention with z as pair bias) + Transition. 48 blocks, 16 heads.',
+      op: {
+        inputs: [
+          { name: 's', shape: [1, N_, D.token_s], color: C.trunk },
+          { name: 'z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+        ],
+        sym: '→ 48× Pairformer',
+        output: { name: '(s, z)', shape: [1, N_, N_, D.token_z], color: C.trunk },
+        formula: 'z += tri_mul_out(z) + tri_mul_in(z) + tri_att_start(z) + tri_att_end(z) + transition(z)'
+      }
+    },
+    {
+      id: 'recycling', node: 'recycling',
+      title: 'Recycling — 3 iterations (pass 1)',
+      shape: `loop × 3`,
+      file: 'model/models/boltz2.py:439-491',
+      desc: 's = s_init + s_recycle(LN(s)) and z = z_init + z_recycle(LN(z)). The trunk (template, MSA, pairformer) then runs again on the refreshed s, z. Only the last iteration has gradient (during training).',
+      op: {
+        inputs: [
+          { name: 's_init', shape: [1, N_, D.token_s], color: C.trunk },
+          { name: 's',      shape: [1, N_, D.token_s], color: C.trunk },
+        ],
+        sym: '↻',
+        output: { name: 's_new', shape: [1, N_, D.token_s], color: C.trunk },
+        formula: 's ← s_init + s_recycle(LN(s))   ·   z ← z_init + z_recycle(LN(z))'
+      }
+    },
+    {
+      id: 'distogram', node: 'distogram',
+      title: 'DistogramModule — pair-distance head',
+      shape: `pdistogram [1, ${N_}, ${N_}, ${D.bins}]`,
+      file: 'model/modules/trunkv2.py:794',
+      desc: 'Symmetrizes z (z + zᵀ) then a Linear projects to num_distograms · 64 bins. Predicts Cβ-Cβ pairwise distance distributions. Fed to confidence as pred_distogram_logits.',
+      op: {
+        inputs: [ { name: 'z', shape: [1, N_, N_, D.token_z], color: C.trunk } ],
+        sym: '→ Linear(→64 bins)',
+        output: { name: 'pdistogram', shape: [1, N_, N_, D.bins], color: C.trunk },
+        formula: 'pdistogram = Linear(z + zᵀ) → [1, N, N, 64]'
+      }
+    },
+    {
+      id: 'diffcond', node: 'diffcond',
+      title: 'DiffusionConditioning — precompute for diffusion',
+      shape: `q [1, ${M()}, ${D.atom_s}] · c · biases`,
+      file: 'model/modules/diffusion_conditioning.py',
+      desc: 'Runs once per Boltz2.forward and is REUSED across every diffusion step. PairwiseConditioning enriches z; AtomEncoder(structure=True) broadcasts s and z to atom / atom-pair space; prepares LN+Linear bias tensors for every atom encoder / token transformer / atom decoder layer.',
+      op: {
+        inputs: [
+          { name: 's', shape: [1, N_, D.token_s], color: C.trunk },
+          { name: 'z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+        ],
+        sym: '→ AtomEncoder + Pairwise',
+        output: { name: '{q, c, biases}', shape: [1, M(), D.atom_s], color: C.struct },
+        formula: 'q, c, atom_enc_bias, atom_dec_bias, token_trans_bias = DiffusionConditioning(s, z, rel_pos, feats)'
+      }
+    },
+    {
+      id: 'atomdiff', node: 'atomdiff',
+      title: 'AtomDiffusion.sample — iterative denoising',
+      shape: `sample_atom_coords [S, ${M()}, 3]`,
+      file: 'model/modules/diffusionv2.py:295',
+      desc: 'Karras (2022) EDM sampler. Start from x_T ~ N(0, σ_max²·I), iterate T steps with c_skip/c_out/c_in preconditioning. Each step calls DiffusionModule: AtomAttn Enc → TokenTx → AtomAttn Dec → r_update. Optional steering: FK particle resample, physical / contact guidance.',
+      op: {
+        inputs: [ { name: '{q, c, biases}', shape: [1, M(), D.atom_s], color: C.struct } ],
+        sym: '→ T diffusion steps',
+        output: { name: 'sample_atom_coords', shape: [5, M(), 3], color: C.struct },
+        formula: 'x̂ = c_skip(σ) · x_t + c_out(σ) · DiffusionModule(c_in(σ)·x_t, σ, cond)   ·   iterate σ_max → σ_min'
+      }
+    },
+    {
+      id: 'confidence', node: 'confidence',
+      title: 'ConfidenceModule — plddt / pae / pde / iptm',
+      shape: `iptm [S] · plddt [N, 50] · pae [N, N, 64]`,
+      file: 'model/modules/confidencev2.py:19',
+      desc: 'Trunk gradient .detach()\'d. z\' = LN(z) + s→z + s→zᵀ; then cdist on x_pred → bin embed adds to z\'. A separate PairformerModule (v2) runs, then Heads: pLDDT [50], PAE [64], PDE [64], resolved [2]. compute_ptms yields ptm, iptm, ligand_iptm, protein_iptm.',
+      op: {
+        inputs: [
+          { name: 's,z',    shape: [1, N_, N_, D.token_z], color: C.trunk },
+          { name: 'x_pred', shape: [5, M(), 3],            color: C.struct },
+        ],
+        sym: '→ v2 Pairformer + heads',
+        output: { name: 'iptm', shape: [5], color: C.conf },
+        formula: 'z′ = LN(z) + s→z + s→zᵀ + Embed(cdist(x_pred))   →   Pairformer(v2)   →   heads'
+      }
+    },
+    {
+      id: 'pass1-done', node: 'iptm',
+      title: 'Pass 1 complete — model_0.pdb written',
+      shape: `model_0..${cfg.affinity ? '4' : 'S-1'}.pdb · confidence_summary.json`,
+      file: 'data/write/writer.py (BoltzWriter)',
+      desc: 'Structure checkpoint writes S predicted PDBs and a confidence summary JSON. If no record has affinity, the run ends here.',
+    },
+  ];
+
+  if (cfg.affinity) {
+    steps.push(
+      {
+        id: 'trigger', node: 'pass2-trigger',
+        title: 'Trigger — reload affinity checkpoint',
+        shape: `Boltz2 ← boltz2_aff.ckpt`,
+        file: 'main.py:1336 · main.py:1391',
+        desc: 'if any(r.affinity for r in manifest.records): a second Boltz2 is loaded from the affinity checkpoint. Fresh DataModule with affinity=True. steering_args disabled. sampling_steps_affinity, diffusion_samples_affinity. BoltzAffinityWriter swaps in as pred_writer.',
+      },
+      {
+        id: 'rerun', node: 'rerun',
+        title: 'Pass 2 — full pipeline re-runs',
+        shape: `trunk + sample() + confidence + affinity`,
+        file: 'Boltz2.forward under aff ckpt',
+        desc: 'Boltz2.forward always executes trunk → structure → confidence before entering the affinity branch. Pass 2 therefore recomputes ALL of them under the aff ckpt weights. The re-sampled pose reproduces pass 1\'s model_0.pdb (verified C-side).',
+      },
+      {
+        id: 'trunk-p2', node: 'trunk-p2',
+        title: 'Pass 2 · Trunk (re-run)',
+        shape: `pass2.s, pass2.z`,
+        file: 'model/models/boltz2.py:415-490',
+        desc: 'Same InputEmbedder / MSA / Template / Pairformer stack, now under the aff ckpt weights. Runs 5 recycling steps by default (main.py:1373).',
+        op: {
+          inputs: [ { name: 'feats', shape: [N_, 'F'], color: C.accent } ],
+          sym: '→ trunk (aff weights)',
+          output: { name: 'pass2.z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+          formula: 'reruns bands 03 with affinity_checkpoint.state_dict()'
+        }
+      },
+      {
+        id: 'diffusion-p2', node: 'diffusion-p2',
+        title: 'Pass 2 · AtomDiffusion.sample (again)',
+        shape: `pass2.sample_atom_coords [5, ${M()}, 3]`,
+        file: 'model/modules/diffusionv2.py:295',
+        desc: 'Called AGAIN inside pass 2\'s Boltz2.forward — this is the second AtomDiffusion.sample() of the run. steering off (no FK, no guidance). The pose it produces reproduces pass 1\'s model_0.pdb.',
+        op: {
+          inputs: [ { name: 'pass2.{q,c}', shape: [1, M(), D.atom_s], color: C.struct } ],
+          sym: '→ T diffusion steps',
+          output: { name: 'pass2.coords', shape: [5, M(), 3], color: C.struct },
+          formula: 'x̂ = c_skip · x_t + c_out · DiffusionModule(...)   ·   aff ckpt weights   ·   no steering'
+        }
+      },
+      {
+        id: 'confidence-p2', node: 'confidence-p2',
+        title: 'Pass 2 · ConfidenceModule (again)',
+        shape: `pass2.iptm [5]`,
+        file: 'model/modules/confidencev2.py:19',
+        desc: 'Runs under aff ckpt weights, producing an independent iptm vector. This — not pass 1\'s iptm — is what feeds argmax below.',
+        op: {
+          inputs: [
+            { name: 'pass2.s,z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+            { name: 'pass2.coords', shape: [5, M(), 3], color: C.struct },
+          ],
+          sym: '→ v2 Pairformer + heads',
+          output: { name: 'pass2.iptm', shape: [5], color: C.conf },
+        }
+      },
+      {
+        id: 'embed-p2', node: 'embed-p2',
+        title: 'InputEmbedder(feats, affinity=True) — s_inputs′',
+        shape: `s_inputs′ [1, ${N_}, ${D.token_s}]`,
+        file: 'trunkv2.py:173-179',
+        desc: 'Called near the end of pass 2 forward, right before the AffinityModule. Swaps in profile_affinity + deletion_mean_affinity so the affinity decision is not confounded by MSA co-evolution.',
+        op: {
+          inputs: [
+            { name: 'feats', shape: [N_, 'F'], color: C.accent },
+            { name: 'profile_affinity', shape: [N_, 33], color: C.aff },
+          ],
+          sym: '→ InputEmbedder',
+          output: { name: 's_inputs′', shape: [1, N_, D.token_s], color: C.aff },
+          formula: 's_inputs′ = res_type_enc + msa_profile_enc(profile_affinity) + AtomAttentionEncoder(atoms)'
+        }
+      },
+      {
+        id: 'best-pose', node: 'best-pose',
+        title: 'Pick canonical pose — argmax(pass2.iptm)',
+        shape: `coords_affinity [1, 1, ${M()}, 3]`,
+        file: 'boltz2.py:622-626',
+        desc: 'best_idx = argsort(pass2.iptm)[0].item(); coords_affinity = pass2.sample_atom_coords[best_idx][None, None]. Note: this uses pass 2\'s own iptm and coords — not the ones from pass 1.',
+        op: {
+          inputs: [
+            { name: 'pass2.iptm',   shape: [5], color: C.conf },
+            { name: 'pass2.coords', shape: [5, M(), 3], color: C.struct },
+          ],
+          sym: '→ index[argmax]',
+          output: { name: 'coords_affinity', shape: [1, 1, M(), 3], color: C.aff },
+          formula: 'best_idx = argmax(pass2.iptm)   ·   coords_affinity = pass2.coords[best_idx]'
+        }
+      },
+      {
+        id: 'crossmask', node: 'crossmask',
+        title: 'cross_pair_mask & z_affinity',
+        shape: `mask [${N_}, ${N_}] · z_affinity [1, ${N_}, ${N_}, ${D.token_z}]`,
+        file: 'boltz2.py:610-620',
+        desc: 'rec_mask = (mol_type == 0) & pad. lig_mask = affinity_token_mask & pad. cross_pair_mask = lig⊗rec + rec⊗lig + lig⊗lig. Then z_affinity = pass2.z · mask. The entire protein–protein sub-block is zeroed out.',
+        op: {
+          inputs: [
+            { name: 'pass2.z', shape: [1, N_, N_, D.token_z], color: C.trunk },
+            { name: 'mask',    shape: [N_, N_],               color: C.aff   },
+          ],
+          sym: '⊙ element-wise',
+          output: { name: 'z_affinity', shape: [1, N_, N_, D.token_z], color: C.aff },
+          formula: 'mask = lig⊗rec + rec⊗lig + lig⊗lig   ·   z_affinity = pass2.z ⊙ mask[None,:,:,None]'
+        }
+      },
+      {
+        id: 'affmod', node: 'affmod',
+        title: 'AffinityModule — masked pair pooling → MLP',
+        shape: `affinity_pred_value [1, 1] · logits_binary [1, 1]`,
+        file: 'model/modules/affinity.py:34',
+        desc: '(1) z = LinearNoBias(LN(z)) + s′→z outer. (2) cdist(x_pred_repr) → dist_bin_pairwise_embed. (3) z += PairwiseConditioning(z, distogram). (4) PairformerNoSeqModule(z, pair_mask=cross_pair_mask) — no s-track. (5) AffinityHeadsTransformer: masked pool → MLP → pred_value (regression) and pred_score → Linear → logits_binary.',
+        op: {
+          inputs: [
+            { name: 's_inputs′',        shape: [1, N_, D.token_s], color: C.aff },
+            { name: 'z_affinity',       shape: [1, N_, N_, D.token_z], color: C.aff },
+            { name: 'coords_affinity',  shape: [1, 1, M(), 3], color: C.aff },
+          ],
+          sym: '→ heads',
+          output: { name: 'pred_value', shape: [1, 1], color: C.aff },
+          formula: 'g = Σᵢⱼ z_{ij}·mask_{ij}(1 − I) / Σ mask   →   MLP   →   pred_value  ·  logits_binary'
+        }
+      },
+      {
+        id: 'ensemble', node: 'ensemble',
+        title: 'Ensemble average (optional)',
+        shape: `v̄ [1, 1] · p̄ [1, 1]`,
+        file: 'boltz2.py:630-702',
+        desc: 'When affinity_ensemble=True, two AffinityModule instances (1 & 2) with different config run on the same z_affinity / coords_affinity / s_inputs′. Averaging reduces variance and improves probability calibration.',
+        op: {
+          inputs: [
+            { name: 'v₁, l₁', shape: [1, 1], color: C.aff },
+            { name: 'v₂, l₂', shape: [1, 1], color: C.aff },
+          ],
+          sym: '→ mean',
+          output: { name: 'v̄, p̄', shape: [1, 1], color: C.aff },
+          formula: 'v̄ = (v₁ + v₂) / 2   ·   p̄ = (σ(l₁) + σ(l₂)) / 2'
+        }
+      },
+      {
+        id: 'mw', node: 'mw',
+        title: 'MW correction (default on)',
+        shape: `v′ [1, 1]`,
+        file: 'boltz2.py:688-698',
+        desc: 'Post-training linear regression against ligand MW^0.3 removes the "larger ligand = better binding" bias. Constants from a least-squares fit.',
+        op: {
+          inputs: [
+            { name: 'v̄',  shape: [1, 1], color: C.aff },
+            { name: 'mw', shape: [1],    color: C.aff },
+          ],
+          sym: '→ affine',
+          output: { name: 'v′', shape: [1, 1], color: C.aff },
+          formula: 'v′ = 1.03526·v̄  −  0.59993·mw^0.3  +  2.83288'
+        }
+      },
+      {
+        id: 'finalout', node: 'finalout',
+        title: 'affinity_pred_value & probability',
+        shape: `pred_value + probability_binary`,
+        file: 'BoltzAffinityWriter · affinity.json',
+        desc: 'BoltzAffinityWriter serializes pred_value (regression, pKd/pIC50-like) and probability_binary (sigmoid, binder / non-binder) into affinity.json / .npz. Bundled with plddt, iptm, ptm outputs.',
+      },
+    );
+  }
+  return steps;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+let STEPS = [];
+let stepIdx = 0;
+let playing = false;
+let playTimer = null;
+
+function renderStep() {
+  const step = STEPS[stepIdx];
+  if (!step) return;
+
+  const info = document.getElementById('info');
+  const isAff = step.node && ['pass2-trigger','rerun','trunk-p2','diffusion-p2','confidence-p2','embed-p2','best-pose','crossmask','affmod','ensemble','mw','finalout','featurizer-aff','affinfo'].includes(step.node);
+
+  let html = `
+    <div class="kicker"><span class="step-badge">STEP ${stepIdx + 1}</span> ${isAff ? 'pass 2 · affinity' : (stepIdx > 8 && stepIdx < 20 ? 'pass 1 · structure' : 'input & featurize')}</div>
+    <h2>${step.title}</h2>
+    <div class="shape">${step.shape}</div>
+    <div class="file">${step.file}</div>
+    <p>${step.desc}</p>
+  `;
+
+  if (step.op) {
+    html += `<div class="op-block">
+      <div class="op-title">tensor transformation</div>`;
+    if (step.op.inputs.length > 0) {
+      html += `<div class="op-row">`;
+      step.op.inputs.forEach((t, i) => {
+        if (i > 0) html += `<span class="op-sym">·</span>`;
+        html += renderTensor(t.name, t.shape, t.color);
+      });
+      html += `</div>`;
+      html += `<div class="op-row"><span class="op-sym">${step.op.sym || '→'}</span></div>`;
+    }
+    html += `<div class="op-row">`;
+    html += renderTensor(step.op.output.name, step.op.output.shape, step.op.output.color);
+    html += `</div>`;
+    if (step.op.formula) {
+      html += `<div class="op-formula">${step.op.formula}</div>`;
+    }
+    html += `</div>`;
+  }
+
+  info.innerHTML = html;
+
+  // Highlight node
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active', 'active-aff'));
+  if (step.node) {
+    const nodeEl = document.querySelector(`[data-id="${step.node}"]`);
+    if (nodeEl) {
+      nodeEl.classList.add(isAff ? 'active-aff' : 'active');
+      // Scroll into view
+      const rect = nodeEl.getBoundingClientRect();
+      const stageRect = document.getElementById('stage').getBoundingClientRect();
+      if (rect.top < stageRect.top || rect.bottom > stageRect.bottom) {
+        nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }
+
+  // Progress
+  document.getElementById('progress').style.width = `${((stepIdx + 1) / STEPS.length) * 100}%`;
+  document.getElementById('step-cur').textContent = stepIdx + 1;
+  document.getElementById('step-tot').textContent = STEPS.length;
+}
+
+function rebuild() {
+  readCfg();
+  STEPS = buildSteps();
+  // clamp
+  if (stepIdx >= STEPS.length) stepIdx = STEPS.length - 1;
+
+  // Dim affinity nodes when affinity=false
+  const svg = document.getElementById('svg');
+  svg.classList.toggle('dim-affinity', !cfg.affinity);
+  document.getElementById('affState').textContent = cfg.affinity ? 'true' : 'false';
+  document.getElementById('affState').style.color = cfg.affinity ? 'var(--aff)' : 'var(--muted)';
+
+  renderStep();
+}
+
+// ============================================================
+// EVENT WIRING
+// ============================================================
+document.getElementById('btn-next').addEventListener('click', () => {
+  stepIdx = Math.min(STEPS.length - 1, stepIdx + 1);
+  renderStep();
+});
+document.getElementById('btn-prev').addEventListener('click', () => {
+  stepIdx = Math.max(0, stepIdx - 1);
+  renderStep();
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  pause();
+  stepIdx = 0;
+  renderStep();
+});
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (playing) pause(); else play();
+});
+document.getElementById('affToggle').addEventListener('change', rebuild);
+['cfg-prot', 'cfg-lig', 'cfg-msa'].forEach(id => {
+  document.getElementById(id).addEventListener('input', rebuild);
+});
+
+function play() {
+  playing = true;
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  const speed = +document.getElementById('speed').value;
+  playTimer = setInterval(() => {
+    if (stepIdx >= STEPS.length - 1) { pause(); return; }
+    stepIdx += 1;
+    renderStep();
+  }, speed);
+}
+function pause() {
+  playing = false;
+  document.getElementById('btn-play').textContent = '▶ Play';
+  if (playTimer) clearInterval(playTimer);
+  playTimer = null;
+}
+document.getElementById('speed').addEventListener('input', () => {
+  if (playing) { pause(); play(); }
+});
+
+// Click a node to jump to first step involving it
+document.querySelectorAll('.node').forEach(el => {
+  el.addEventListener('click', () => {
+    const id = el.dataset.id;
+    const idx = STEPS.findIndex(s => s.node === id);
+    if (idx >= 0) { stepIdx = idx; renderStep(); }
+  });
+});
+
+// Init
+rebuild();
+</script>
+</body>
+</html>
