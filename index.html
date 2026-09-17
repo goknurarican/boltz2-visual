@@ -220,6 +220,29 @@
   }
   .tensor-3d canvas:active { cursor: grabbing; }
 
+  .feats-box {
+    display: flex; flex-direction: column;
+    max-height: 240px; overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--border-hi); border-radius: 3px;
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+    min-width: 240px;
+  }
+  .feats-group {
+    padding: 5px 8px 3px;
+    font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--muted); border-top: 1px solid var(--border);
+  }
+  .feats-group:first-child { border-top: none; }
+  .feats-row {
+    display: grid; grid-template-columns: 8px 1fr auto;
+    gap: 8px; align-items: center;
+    padding: 2px 8px;
+  }
+  .feats-row:hover { background: var(--panel2); }
+  .feats-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .feats-name { color: var(--text-strong); }
+  .feats-shape { color: var(--muted); font-size: 9.5px; }
+
   svg { display: block; }
 
   .node { cursor: pointer; }
@@ -734,7 +757,77 @@ let _t3dCounter = 0;
 const _pendingT3D = [];   // { id, shape, color }
 const _activeT3D  = [];   // Tensor3D instances
 
+// Feats dict contents (what featurizerv2.py returns).
+const FEATS = [
+  { g: 'token', name: 'token_index',           shape: '[B, N]' },
+  { g: 'token', name: 'residue_index',         shape: '[B, N]' },
+  { g: 'token', name: 'asym_id',               shape: '[B, N]' },
+  { g: 'token', name: 'entity_id',             shape: '[B, N]' },
+  { g: 'token', name: 'sym_id',                shape: '[B, N]' },
+  { g: 'token', name: 'mol_type',              shape: '[B, N]' },
+  { g: 'token', name: 'res_type',              shape: '[B, N, 33]' },
+  { g: 'token', name: 'token_bonds',           shape: '[B, N, N]' },
+  { g: 'token', name: 'type_bonds',            shape: '[B, N, N]' },
+  { g: 'token', name: 'token_pad_mask',        shape: '[B, N]' },
+  { g: 'token', name: 'token_resolved_mask',   shape: '[B, N]' },
+  { g: 'token', name: 'contact_conditioning',  shape: '[B, N, N, 6]' },
+  { g: 'token', name: 'contact_threshold',     shape: '[B, N, N]' },
+  { g: 'token', name: 'affinity_token_mask',   shape: '[B, N]' },
+  { g: 'atom',  name: 'ref_pos',               shape: '[B, M, 3]' },
+  { g: 'atom',  name: 'ref_charge',            shape: '[B, M]' },
+  { g: 'atom',  name: 'ref_element',           shape: '[B, M, 128]' },
+  { g: 'atom',  name: 'ref_atom_name_chars',   shape: '[B, M, 4, 64]' },
+  { g: 'atom',  name: 'ref_space_uid',         shape: '[B, M]' },
+  { g: 'atom',  name: 'atom_pad_mask',         shape: '[B, M]' },
+  { g: 'atom',  name: 'atom_to_token',         shape: '[B, M, N]' },
+  { g: 'atom',  name: 'token_to_rep_atom',     shape: '[B, N, M]' },
+  { g: 'msa',   name: 'msa',                   shape: '[B, S, N]' },
+  { g: 'msa',   name: 'msa_paired',            shape: '[B, S, N]' },
+  { g: 'msa',   name: 'msa_mask',              shape: '[B, S, N]' },
+  { g: 'msa',   name: 'profile',               shape: '[B, N, 33]' },
+  { g: 'msa',   name: 'deletion_value',        shape: '[B, S, N]' },
+  { g: 'msa',   name: 'deletion_mean',         shape: '[B, N]' },
+  { g: 'msa',   name: 'has_deletion',          shape: '[B, S, N]' },
+  { g: 'aff',   name: 'profile_affinity',      shape: '[B, N, 33]' },
+  { g: 'aff',   name: 'deletion_mean_affinity',shape: '[B, N]' },
+  { g: 'aff',   name: 'affinity_mw',           shape: 'scalar' },
+  { g: 'tmpl',  name: 'template_restype',      shape: '[B, T, N, 33]' },
+  { g: 'tmpl',  name: 'template_cb',           shape: '[B, T, N, 3]' },
+  { g: 'tmpl',  name: 'template_ca',           shape: '[B, T, N, 3]' },
+  { g: 'tmpl',  name: 'template_frame_rot',    shape: '[B, T, N, 3, 3]' },
+  { g: 'tmpl',  name: 'template_frame_t',      shape: '[B, T, N, 3]' },
+  { g: 'tmpl',  name: 'template_mask',         shape: '[B, T, N]' },
+  { g: 'tmpl',  name: 'visibility_ids',        shape: '[B, T, N]' },
+];
+const FEATS_GROUP_LABEL = { token: 'token-level', atom: 'atom-level', msa: 'msa', aff: 'affinity-only', tmpl: 'template' };
+const FEATS_GROUP_COLOR = { token: '#7c85f4', atom: '#d19b7d', msa: '#c9a976', aff: '#d47a86', tmpl: '#a389c4' };
+
+function renderFeatsDict() {
+  let html = '';
+  let currentGroup = null;
+  for (const f of FEATS) {
+    if (f.g !== currentGroup) {
+      html += `<div class="feats-group">${FEATS_GROUP_LABEL[f.g]}</div>`;
+      currentGroup = f.g;
+    }
+    html += `<div class="feats-row">
+      <span class="feats-dot" style="background:${FEATS_GROUP_COLOR[f.g]}"></span>
+      <span class="feats-name">${f.name}</span>
+      <span class="feats-shape">${f.shape}</span>
+    </div>`;
+  }
+  return `<div class="feats-box">${html}</div>`;
+}
+
 function renderTensor(name, shape, color) {
+  // Special case: "feats" is a dict returned by featurizerv2 — render its contents
+  if (name === 'feats' || (shape.length === 2 && shape[1] === 'F')) {
+    return `<div class="tensor">
+      <span class="tensor-name">${name} <span style="color:var(--muted)">— dict of ${FEATS.length} tensors</span></span>
+      ${renderFeatsDict()}
+    </div>`;
+  }
+
   const dims = shape.length;
   const shapeStr = '[' + shape.map(x => typeof x === 'string' ? x : x).join(', ') + ']';
 
